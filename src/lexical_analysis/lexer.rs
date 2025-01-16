@@ -1,6 +1,7 @@
-use crate::lexical_analysis::error::LexicalError;
-use crate::lexical_analysis::token::Token;
+use crate::lexical_analysis::error::{LexicalError, LexicalErrorType};
+use crate::lexical_analysis::token::{Literal, Token};
 use crate::lexical_analysis::token_type::TokenType;
+use std::str::FromStr;
 
 #[allow(unused)]
 pub struct Lexer {
@@ -33,6 +34,7 @@ impl Lexer {
         let mut errors = Vec::new();
 
         while self.current < self.source.len() {
+            self.start = self.current;
             let ch = self.advance();
 
             match ch {
@@ -81,7 +83,159 @@ impl Lexer {
                     self.line,
                 )),
                 '*' => tokens.push(Token::new(TokenType::Star, ch.to_string(), None, self.line)),
-                _ => errors.push(LexicalError::new(ch.to_string(), self.line)),
+                '=' => {
+                    if self.advance_if_equal('=') {
+                        tokens.push(Token::new(
+                            TokenType::EqualEqual,
+                            "==".to_string(),
+                            None,
+                            self.line,
+                        ))
+                    } else {
+                        tokens.push(Token::new(
+                            TokenType::Equal,
+                            ch.to_string(),
+                            None,
+                            self.line,
+                        ))
+                    }
+                }
+                '!' => {
+                    if self.advance_if_equal('=') {
+                        tokens.push(Token::new(
+                            TokenType::BangEqual,
+                            "!=".to_string(),
+                            None,
+                            self.line,
+                        ))
+                    } else {
+                        tokens.push(Token::new(TokenType::Bang, ch.to_string(), None, self.line))
+                    }
+                }
+                '>' => {
+                    if self.advance_if_equal('=') {
+                        tokens.push(Token::new(
+                            TokenType::GreaterEqual,
+                            ">=".to_string(),
+                            None,
+                            self.line,
+                        ))
+                    } else {
+                        tokens.push(Token::new(
+                            TokenType::Greater,
+                            ch.to_string(),
+                            None,
+                            self.line,
+                        ))
+                    }
+                }
+                '<' => {
+                    if self.advance_if_equal('=') {
+                        tokens.push(Token::new(
+                            TokenType::LessEqual,
+                            "<=".to_string(),
+                            None,
+                            self.line,
+                        ))
+                    } else {
+                        tokens.push(Token::new(TokenType::Less, ch.to_string(), None, self.line))
+                    }
+                }
+                '/' => {
+                    if self.advance_if_equal('/') {
+                        while self.current < self.source.len()
+                            && self.source.chars().nth(self.current) != Some('\n')
+                        {
+                            self.current += 1;
+                        }
+                    } else {
+                        tokens.push(Token::new(
+                            TokenType::Slash,
+                            ch.to_string(),
+                            None,
+                            self.line,
+                        ))
+                    }
+                }
+                '\n' => self.line += 1,
+                ch if ch.is_whitespace() => continue,
+                '"' => {
+                    while self.current < self.source.len() && !self.current_char_matches('"') {
+                        // Support multi-line strings
+                        if self.current_char_matches('\n') {
+                            self.line += 1;
+                        }
+
+                        self.advance();
+                    }
+
+                    if self.current >= self.source.len() {
+                        errors.push(LexicalError::new(
+                            LexicalErrorType::UnterminatedString,
+                            self.line,
+                        ))
+                    } else {
+                        self.advance();
+
+                        tokens.push(Token::new(
+                            TokenType::String,
+                            self.source[self.start..self.current].to_string(),
+                            Some(Literal::String(
+                                self.source[self.start + 1..self.current - 1].to_string(),
+                            )),
+                            self.line,
+                        ))
+                    }
+                }
+                ch if ch.is_ascii_digit() => {
+                    while self.current < self.source.len()
+                        && self
+                            .source
+                            .chars()
+                            .nth(self.current)
+                            .unwrap()
+                            .is_ascii_digit()
+                    {
+                        self.advance();
+                    }
+
+                    if self.current_char_matches('.')
+                        && self.current + 1 < self.source.len()
+                        && self
+                            .source
+                            .chars()
+                            .nth(self.current + 1)
+                            .unwrap()
+                            .is_ascii_digit()
+                    {
+                        self.advance();
+
+                        while self.current < self.source.len()
+                            && self
+                            .source
+                            .chars()
+                            .nth(self.current)
+                            .unwrap()
+                            .is_ascii_digit()
+                        {
+                            self.advance();
+                        }
+                    }
+
+                    tokens.push(Token::new(
+                        TokenType::Number,
+                        self.source[self.start..self.current].to_string(),
+                        match f64::from_str(&self.source[self.start..self.current]) {
+                            Ok(number) => Some(Literal::Number(number)),
+                            Err(_) => None,
+                        },
+                        self.line,
+                    ))
+                }
+                _ => errors.push(LexicalError::new(
+                    LexicalErrorType::UnexpectedCharacter(ch),
+                    self.line,
+                )),
             }
         }
 
@@ -95,5 +249,28 @@ impl Lexer {
         self.current += 1;
 
         curr_char
+    }
+
+    fn advance_if_equal(&mut self, expected: char) -> bool {
+        if self.current >= self.source.len() {
+            return false;
+        }
+
+        if self.source.chars().nth(self.current).unwrap() == expected {
+            self.current += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn current_char_matches(&mut self, expected: char) -> bool {
+        if self.current >= self.source.len()
+            || self.source.chars().nth(self.current) != Some(expected)
+        {
+            false
+        } else {
+            true
+        }
     }
 }
