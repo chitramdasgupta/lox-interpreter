@@ -3,7 +3,6 @@ use crate::lexical_analysis::token::{Literal, Token};
 use crate::lexical_analysis::token_type::TokenType;
 use std::str::FromStr;
 
-#[allow(unused)]
 pub struct Lexer {
     /// The entire source code string.
     source: String,
@@ -13,8 +12,6 @@ pub struct Lexer {
     current: usize,
     /// The line number to which the current lexeme belongs.
     line: usize,
-    /// A vector to store any lexical errors encountered during scanning.
-    errors: Vec<LexicalError>,
 }
 
 impl Lexer {
@@ -24,7 +21,6 @@ impl Lexer {
             start: 0,
             current: 0,
             line: 1,
-            errors: Vec::new(),
         }
     }
 
