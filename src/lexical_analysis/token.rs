@@ -1,7 +1,7 @@
 use crate::lexical_analysis::token_type::TokenType;
 
 #[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Literal {
     String(String),
     Number(f64),
@@ -26,8 +26,7 @@ impl std::fmt::Display for Literal {
     }
 }
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Token {
     typ: TokenType,
     lexeme: String,

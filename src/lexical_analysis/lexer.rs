@@ -143,9 +143,7 @@ impl Lexer {
                 }
                 '/' => {
                     if self.advance_if_equal('/') {
-                        while self.current < self.source.len()
-                            && self.source.chars().nth(self.current) != Some('\n')
-                        {
+                        while self.current < self.source.len() && !self.current_char_matches('\n') {
                             self.current += 1;
                         }
                     } else {
@@ -212,11 +210,11 @@ impl Lexer {
 
                         while self.current < self.source.len()
                             && self
-                            .source
-                            .chars()
-                            .nth(self.current)
-                            .unwrap()
-                            .is_ascii_digit()
+                                .source
+                                .chars()
+                                .nth(self.current)
+                                .unwrap()
+                                .is_ascii_digit()
                         {
                             self.advance();
                         }
@@ -231,6 +229,25 @@ impl Lexer {
                         },
                         self.line,
                     ))
+                }
+                ch if ch.is_alphanumeric() || ch == '_' => {
+                    while self.current < self.source.len()
+                        && (self.current_char_matches('_')
+                            || self
+                                .source
+                                .chars()
+                                .nth(self.current)
+                                .unwrap()
+                                .is_alphanumeric())
+                    {
+                        self.advance();
+                    }
+
+                    let text = &self.source[self.start..self.current];
+                    let typ =
+                        TokenType::from_keyword(text).unwrap_or_else(|| TokenType::Identifier);
+
+                    tokens.push(Token::new(typ, text.to_string(), None, self.line))
                 }
                 _ => errors.push(LexicalError::new(
                     LexicalErrorType::UnexpectedCharacter(ch),
@@ -272,5 +289,139 @@ impl Lexer {
         } else {
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::lexical_analysis::token::{Literal, Token};
+    use crate::lexical_analysis::token_type::TokenType;
+
+    fn assert_tokens(source: &str, expected_tokens: Vec<Token>) {
+        let mut lexer = Lexer::new(source);
+        let (tokens, errors) = lexer.scan_tokens();
+
+        assert!(errors.is_empty(), "Unexpected lexical errors: {:?}", errors);
+        assert_eq!(
+            tokens.len(),
+            expected_tokens.len(),
+            "Token count mismatch. Expected {} tokens, got {}",
+            expected_tokens.len(),
+            tokens.len()
+        );
+
+        for (actual, expected) in tokens.iter().zip(expected_tokens.iter()) {
+            assert_eq!(
+                actual, expected,
+                "\nExpected token: {:?}\nActual token: {:?}",
+                expected, actual
+            );
+        }
+    }
+
+    #[test]
+    fn test_single_character_tokens() {
+        let source = "(){},.-+;*";
+        let expected = vec![
+            Token::new(TokenType::LeftParen, "(".to_string(), None, 1),
+            Token::new(TokenType::RightParen, ")".to_string(), None, 1),
+            Token::new(TokenType::LeftBrace, "{".to_string(), None, 1),
+            Token::new(TokenType::RightBrace, "}".to_string(), None, 1),
+            Token::new(TokenType::Comma, ",".to_string(), None, 1),
+            Token::new(TokenType::Dot, ".".to_string(), None, 1),
+            Token::new(TokenType::Minus, "-".to_string(), None, 1),
+            Token::new(TokenType::Plus, "+".to_string(), None, 1),
+            Token::new(TokenType::Semicolon, ";".to_string(), None, 1),
+            Token::new(TokenType::Star, "*".to_string(), None, 1),
+            Token::new(TokenType::Eof, "".to_string(), None, 1),
+        ];
+        assert_tokens(source, expected);
+    }
+
+    #[test]
+    fn test_one_or_two_character_tokens() {
+        let source = "! != = == > >= < <= //";
+        let expected = vec![
+            Token::new(TokenType::Bang, "!".to_string(), None, 1),
+            Token::new(TokenType::BangEqual, "!=".to_string(), None, 1),
+            Token::new(TokenType::Equal, "=".to_string(), None, 1),
+            Token::new(TokenType::EqualEqual, "==".to_string(), None, 1),
+            Token::new(TokenType::Greater, ">".to_string(), None, 1),
+            Token::new(TokenType::GreaterEqual, ">=".to_string(), None, 1),
+            Token::new(TokenType::Less, "<".to_string(), None, 1),
+            Token::new(TokenType::LessEqual, "<=".to_string(), None, 1),
+            Token::new(TokenType::Eof, "".to_string(), None, 1),
+        ];
+        assert_tokens(source, expected);
+    }
+
+    #[test]
+    fn test_string_literals() {
+        let source = r#""Hello, World!" "Multi
+line
+string""#;
+        let expected = vec![
+            Token::new(
+                TokenType::String,
+                "\"Hello, World!\"".to_string(),
+                Some(Literal::String("Hello, World!".to_string())),
+                1,
+            ),
+            Token::new(
+                TokenType::String,
+                "\"Multi\nline\nstring\"".to_string(),
+                Some(Literal::String("Multi\nline\nstring".to_string())),
+                3,
+            ),
+            Token::new(TokenType::Eof, "".to_string(), None, 3),
+        ];
+        assert_tokens(source, expected);
+    }
+
+    #[test]
+    fn test_number_literals() {
+        let source = "123 123.456 0.123";
+        let expected = vec![
+            Token::new(
+                TokenType::Number,
+                "123".to_string(),
+                Some(Literal::Number(123.0)),
+                1,
+            ),
+            Token::new(
+                TokenType::Number,
+                "123.456".to_string(),
+                Some(Literal::Number(123.456)),
+                1,
+            ),
+            Token::new(
+                TokenType::Number,
+                "0.123".to_string(),
+                Some(Literal::Number(0.123)),
+                1,
+            ),
+            Token::new(TokenType::Eof, "".to_string(), None, 1),
+        ];
+        assert_tokens(source, expected);
+    }
+
+    #[test]
+    fn test_keywords_and_identifiers() {
+        let source = "var number = 42;";
+        let expected = vec![
+            Token::new(TokenType::Var, "var".to_string(), None, 1),
+            Token::new(TokenType::Identifier, "number".to_string(), None, 1),
+            Token::new(TokenType::Equal, "=".to_string(), None, 1),
+            Token::new(
+                TokenType::Number,
+                "42".to_string(),
+                Some(Literal::Number(42.0)),
+                1,
+            ),
+            Token::new(TokenType::Semicolon, ";".to_string(), None, 1),
+            Token::new(TokenType::Eof, "".to_string(), None, 1),
+        ];
+        assert_tokens(source, expected);
     }
 }
