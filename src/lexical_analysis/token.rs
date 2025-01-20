@@ -29,7 +29,7 @@ impl std::fmt::Display for Literal {
 #[derive(Debug, PartialEq)]
 pub struct Token {
     typ: TokenType,
-    lexeme: String,
+    pub lexeme: String,
     literal: Option<Literal>,
     line: usize,
 }
